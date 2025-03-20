@@ -401,254 +401,43 @@ def min_max_filter(image, kernel_size=3):
     
     return result
 
-def adaptive_detail_enhancement(image, strength=1.0):
-    """Enhance image details adaptively based on frequency content
+def enhance_detail_without_distortion(image, strength=0.7):
+    """Enhance image details without distorting the original appearance
     
     Args:
         image: Input image
-        strength: Enhancement strength (0.5-2.0)
+        strength: Enhancement strength (0.2-0.9 recommended)
     
     Returns:
-        Detail enhanced image
+        Enhanced image with better details but preserved structure
     """
     try:
-        # Split image channels if color image
-        if len(image.shape) == 3:
-            # Convert to YUV color space to separate luminance
-            image_yuv = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
-            y_channel = image_yuv[:,:,0]
-            
-            # Apply enhancement only to luminance channel
-            result_y = np.zeros_like(y_channel)
-            
-            # Multi-scale decomposition (3 scales)
-            # Scale 1 - fine details
-            blur1 = cv2.GaussianBlur(y_channel, (0, 0), 1.0)
-            detail1 = y_channel - blur1
-            
-            # Scale 2 - medium details
-            blur2 = cv2.GaussianBlur(y_channel, (0, 0), 3.0)
-            detail2 = blur1 - blur2
-            
-            # Scale 3 - coarse details
-            blur3 = cv2.GaussianBlur(y_channel, (0, 0), 9.0)
-            detail3 = blur2 - blur3
-            
-            # Base layer (very low frequency)
-            base = blur3
-            
-            # Enhance each detail layer with different weights
-            fine_weight = min(2.0, max(0.8, strength * 1.5))  # Fine details get stronger enhancement
-            medium_weight = min(1.7, max(0.7, strength * 1.2))  # Medium details
-            coarse_weight = min(1.4, max(0.6, strength))  # Coarse details get lighter enhancement
-            
-            # Reconstruct enhanced image by adding weighted details to base
-            result_y = base + (detail1 * fine_weight) + (detail2 * medium_weight) + (detail3 * coarse_weight)
-            
-            # Clip to valid range
-            result_y = np.clip(result_y, 0, 255).astype(np.uint8)
-            
-            # Merge back with color channels
-            image_yuv[:,:,0] = result_y
-            result = cv2.cvtColor(image_yuv, cv2.COLOR_YUV2RGB)
-            
-        else:
-            # For grayscale images, similar process without color space conversion
-            # Multi-scale decomposition
-            blur1 = cv2.GaussianBlur(image, (0, 0), 1.0)
-            detail1 = image - blur1
-            
-            blur2 = cv2.GaussianBlur(image, (0, 0), 3.0)
-            detail2 = blur1 - blur2
-            
-            blur3 = cv2.GaussianBlur(image, (0, 0), 9.0)
-            detail3 = blur2 - blur3
-            
-            base = blur3
-            
-            # Enhance each detail layer
-            fine_weight = min(2.0, max(0.8, strength * 1.5))
-            medium_weight = min(1.7, max(0.7, strength * 1.2))
-            coarse_weight = min(1.4, max(0.6, strength))
-            
-            # Reconstruct
-            result = base + (detail1 * fine_weight) + (detail2 * medium_weight) + (detail3 * coarse_weight)
-            result = np.clip(result, 0, 255).astype(np.uint8)
-            
-        return result
-    
-    except Exception as e:
-        logging.error(f"Error in adaptive detail enhancement: {str(e)}")
-        return image
-
-def texture_preserving_filter(image, strength=0.4):
-    """Apply texture-preserving filtering to enhance image quality while reducing noise
-    
-    Args:
-        image: Input image
-        strength: Filter strength (0.0-1.0)
-    
-    Returns:
-        Filtered image
-    """
-    try:
-        # Convert strength to appropriate filter parameters
-        sigma_s = 60 * (1 - strength)  # Spatial sigma (smaller = stronger effect)
-        sigma_r = 0.4 * (1 - strength)  # Range sigma (smaller = stronger effect)
-        
-        # Apply edge-preserving detail filter (similar to bilateral but better preserves textures)
-        # Using guided filter because it's more efficient than bilateral for texture preservation
-        if len(image.shape) == 3:  # Color image
-            result = np.zeros_like(image)
-            
-            # Process each channel
-            for i in range(3):
-                # Get channel
-                channel = image[:,:,i]
-                
-                # Apply guided filter using the channel itself as guide
-                radius = int(3 * (1 + strength * 2))  # Radius based on strength
-                epsilon = (0.1 + strength * 0.3) ** 2  # Regularization term
-                
-                filtered = cv2.ximgproc.guidedFilter(
-                    guide=channel,
-                    src=channel,
-                    radius=radius,
-                    eps=epsilon
-                )
-                
-                # Apply result to channel
-                result[:,:,i] = filtered
-                
-        else:  # Grayscale
-            radius = int(3 * (1 + strength * 2))
-            epsilon = (0.1 + strength * 0.3) ** 2
-            
-            result = cv2.ximgproc.guidedFilter(
-                guide=image,
-                src=image,
-                radius=radius,
-                eps=epsilon
-            )
-            
-        # Additional local contrast enhancement
-        local_contrast = cv2.addWeighted(
-            image, 1 + strength * 0.5,
-            result, -(strength * 0.5),
-            0
-        )
-        
-        # Blend between filtered and contrast-enhanced
-        alpha = 0.7
-        result = cv2.addWeighted(result, alpha, local_contrast, 1-alpha, 0)
-        
-        return result.astype(np.uint8)
-    
-    except Exception as e:
-        logging.error(f"Error in texture preserving filter: {str(e)}")
-        return image
-
-def has_face(image):
-    """Detect if image contains a face
-    
-    Args:
-        image: Input image
-    
-    Returns:
-        Boolean indicating if face is detected
-    """
-    try:
-        # Load pre-trained face cascade if available
-        face_cascade_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                         'haarcascade_frontalface_default.xml')
-        
-        # Use default OpenCV path if file not found
-        if not os.path.exists(face_cascade_path):
-            face_cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        
-        # Load the face cascade
-        face_cascade = cv2.CascadeClassifier(face_cascade_path)
-        
-        # Convert to grayscale for detection
-        if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        else:
-            gray = image
-            
-        # Detect faces
-        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-        
-        # Return True if any faces found
-        return len(faces) > 0
-    
-    except Exception as e:
-        logging.error(f"Error in face detection: {str(e)}")
-        return False
-
-def skin_smoothing(image, strength=0.5):
-    """Apply skin smoothing filter (commonly used in beauty apps)
-    
-    Args:
-        image: Input image
-        strength: Smoothing strength (0.0-1.0)
-    
-    Returns:
-        Smoothed image
-    """
-    try:
-        # Check if image is color (can't do skin smoothing on grayscale)
-        if len(image.shape) < 3:
+        # Make sure we have a proper image
+        if len(image.shape) < 2:
             return image
             
-        # Convert to YCrCb color space which is better for skin detection
-        ycrcb = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
-        
-        # Define skin color range in YCrCb
-        lower = np.array([0, 133, 77], dtype=np.uint8)
-        upper = np.array([255, 173, 127], dtype=np.uint8)
-        
-        # Create skin mask
-        skin_mask = cv2.inRange(ycrcb, lower, upper)
-        
-        # Apply morphological operations to improve mask
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-        skin_mask = cv2.GaussianBlur(skin_mask, (5, 5), 0)
-        
-        # Create normalized alpha mask
-        skin_alpha = skin_mask.astype(float) / 255.0
-        
-        # Adjust strength
-        skin_alpha = skin_alpha * strength
-        
-        # Create 3-channel skin alpha mask
-        skin_alpha_3c = np.zeros_like(image, dtype=float)
-        for i in range(3):
-            skin_alpha_3c[:,:,i] = skin_alpha
+        # First apply bilateral filter for noise reduction while preserving edges
+        if len(image.shape) == 3:  # Color image
+            smooth = cv2.bilateralFilter(image, 5, 75, 75)
+        else:  # Grayscale
+            smooth = cv2.bilateralFilter(image, 5, 75, 75)
             
-        # Create smoothed version of image
-        # Use bilateral filtering for edge-preserving skin smoothing
-        smoothed = cv2.bilateralFilter(image, 9, 75, 75)
+        # Create detail layer (high frequency)
+        detail = cv2.subtract(image, smooth)
         
-        # Additional smoothing with guided filter
-        radius = int(5 + 10 * strength)
-        eps = 0.1 * 0.1
-        for i in range(3):
-            smoothed[:,:,i] = cv2.ximgproc.guidedFilter(
-                guide=image[:,:,i],
-                src=smoothed[:,:,i],
-                radius=radius,
-                eps=eps
-            )
+        # Enhance details by multiplying with a factor
+        enhanced_detail = cv2.multiply(detail, np.ones_like(detail) * (1.0 + strength))
         
-        # Blend original and smoothed based on skin mask
-        result = (1 - skin_alpha_3c) * image.astype(float) + skin_alpha_3c * smoothed.astype(float)
+        # Add enhanced details back to smooth image
+        result = cv2.add(smooth, enhanced_detail)
         
-        return result.astype(np.uint8)
-    
+        # Ensure output is within valid range
+        result = np.clip(result, 0, 255).astype(np.uint8)
+        
+        return result
+        
     except Exception as e:
-        logging.error(f"Error in skin smoothing: {str(e)}")
+        logging.error(f"Error in enhance_detail_without_distortion: {str(e)}")
         return image
 
 def enhance_resolution(image):
@@ -677,142 +466,107 @@ def enhance_resolution(image):
         # Store original for edge protection
         original = img_array.copy()
         
-        # STEP 1: Always apply median filter first as priority
-        logger.debug("Applying median filter as priority")
+        # STEP 1: Apply adaptive noise reduction
+        logger.debug("Applying adaptive noise reduction")
         
-        # Determine kernel size based on noise level
-        if noise_level > 30:
-            kernel_size = 5  # Stronger filtering for high noise
-        else:
-            kernel_size = 3  # Lighter filtering for lower noise
-        
-        logger.debug(f"Using median filter with kernel size {kernel_size}")
-        
-        if len(img_array.shape) == 3:  # Color image
-            result = img_array.copy()
-            for i in range(3):  # Process each channel
-                result[:,:,i] = cv2.medianBlur(img_array[:,:,i], kernel_size)
-        else:  # Grayscale image
-            result = cv2.medianBlur(img_array, kernel_size)
-        
-        # STEP 2: Apply secondary filtering based on noise type
-        if noise_level > 15:  # Only apply secondary filtering for significant noise
-            logger.debug("Applying secondary filtering based on noise type")
-            
+        if noise_level > 25:  # High noise
             if noise_type == 'salt_pepper':
-                # For salt & pepper, apply min-max filter
-                logger.debug("Using min-max filter for salt & pepper noise")
-                min_max_size = 3 if noise_level < 30 else 5
-                result = min_max_filter(result, kernel_size=min_max_size)
-            elif noise_type == 'gaussian':
-                # For gaussian noise, apply light bilateral filter to preserve edges
-                d = 5  # Small diameter
-                sigma = 30  # Conservative sigma value
-                result = cv2.bilateralFilter(result, d, sigma, sigma)
-                
-            elif noise_type == 'speckle':
-                # For speckle noise, apply light gaussian filter
-                result = cv2.GaussianBlur(result, (3, 3), 0.8)
-                
-            else:  # unknown noise type
-                # Apply light NLM denoising
-                h = 10  # Light filtering strength
-                if len(result.shape) == 3:
-                    result = cv2.fastNlMeansDenoisingColored(result, None, h, h, 5, 11)
+                # Use median filter for salt & pepper noise
+                logger.debug("Using median filter for high salt & pepper noise")
+                if len(img_array.shape) == 3:  # Color image
+                    result = img_array.copy()
+                    for i in range(3):  # Process each channel
+                        result[:,:,i] = cv2.medianBlur(img_array[:,:,i], 5)
                 else:
-                    result = cv2.fastNlMeansDenoising(result, None, h, 5, 11)
+                    result = cv2.medianBlur(img_array, 5)
+                # Apply min-max filter to catch any remaining outliers
+                result = min_max_filter(result, kernel_size=3)
+            elif noise_type == 'gaussian':
+                # Use bilateral filter for gaussian noise (preserves edges better)
+                logger.debug("Using bilateral filter for high gaussian noise")
+                result = cv2.bilateralFilter(img_array, 9, 75, 75)
+            else:
+                # Use NLM for unknown or mixed noise (best quality but slower)
+                logger.debug("Using NLM filter for high unknown/mixed noise")
+                h_value = 15  # Higher h for stronger noise reduction
+                if len(img_array.shape) == 3:
+                    result = cv2.fastNlMeansDenoisingColored(img_array, None, h_value, h_value, 7, 21)
+                else:
+                    result = cv2.fastNlMeansDenoising(img_array, None, h_value, 7, 21)
+        elif noise_level > 10:  # Medium noise
+            if noise_type == 'salt_pepper':
+                # Use median filter with smaller kernel
+                logger.debug("Using median filter for medium salt & pepper noise")
+                if len(img_array.shape) == 3:
+                    result = img_array.copy()
+                    for i in range(3):
+                        result[:,:,i] = cv2.medianBlur(img_array[:,:,i], 3)
+                else:
+                    result = cv2.medianBlur(img_array, 3)
+            elif noise_type == 'gaussian':
+                # Use lighter bilateral filter
+                logger.debug("Using light bilateral filter for medium gaussian noise")
+                result = cv2.bilateralFilter(img_array, 7, 50, 50)
+            else:
+                # Use lighter NLM
+                logger.debug("Using light NLM filter for medium unknown/mixed noise")
+                h_value = 10
+                if len(img_array.shape) == 3:
+                    result = cv2.fastNlMeansDenoisingColored(img_array, None, h_value, h_value, 5, 15)
+                else:
+                    result = cv2.fastNlMeansDenoising(img_array, None, h_value, 5, 15)
+        else:  # Low or no noise - minimal processing
+            logger.debug("Low noise detected, applying minimal noise reduction")
+            if len(img_array.shape) == 3:
+                result = cv2.bilateralFilter(img_array, 5, 35, 35)
+            else:
+                result = cv2.bilateralFilter(img_array, 5, 35, 35)
         
-        # STEP 3: Apply texture-preserving filter
-        logger.debug("Applying texture-preserving filter")
-        texture_strength = 0.6 if noise_level < 15 else 0.4  # Stronger for clean images
-        result = texture_preserving_filter(result, strength=texture_strength)
-        
-        # STEP 4: Check if image contains a face for special processing
-        has_faces = has_face(result)
-        logger.debug(f"Face detected: {has_faces}")
-        
-        if has_faces:
-            # Apply skin smoothing for face images (like beauty apps)
-            logger.debug("Applying smart skin smoothing")
-            # Adjust smoothing strength based on noise level
-            skin_strength = 0.6 if noise_level < 15 else 0.4
-            result = skin_smoothing(result, strength=skin_strength)
-        
-        # STEP 5: Apply multi-scale detail enhancement
-        logger.debug("Applying multi-scale detail enhancement")
+        # STEP 2: Enhance details without distortion
+        logger.debug("Enhancing details without distortion")
         # Adjust enhancement strength based on noise level
         if noise_level > 25:
-            detail_strength = 0.7  # Mild for high noise
-        elif noise_level > 15:
-            detail_strength = 1.0  # Standard for medium noise
+            detail_strength = 0.35  # Very gentle for high noise
+        elif noise_level > 10:
+            detail_strength = 0.5   # Moderate for medium noise
         else:
-            detail_strength = 1.3  # Stronger for clean images
+            detail_strength = 0.7   # Stronger for clean images
+        
+        result = enhance_detail_without_distortion(result, strength=detail_strength)
+        
+        # STEP 3: Apply gentle edge enhancement
+        logger.debug("Applying gentle edge enhancement")
+        
+        if noise_level > 25:  # High noise
+            # Skip this step for very noisy images
+            pass
+        elif noise_level > 10:  # Medium noise
+            # Very gentle unsharp mask
+            logger.debug("Using very gentle unsharp mask")
+            result = unsharp_mask(result, radius=1, amount=0.5, threshold=15)
+        else:  # Low noise
+            # Gentle unsharp mask
+            logger.debug("Using gentle unsharp mask")
+            result = unsharp_mask(result, radius=1, amount=0.8, threshold=10)
+        
+        # STEP 4: Preserve original colors and appearance with careful blending
+        logger.debug("Preserving original appearance with careful blending")
+        
+        # Calculate blend factor based on noise level
+        # Higher noise = more weight to processed image
+        # Lower noise = more weight to original to preserve appearance
+        if noise_level > 25:
+            blend_factor = 0.8  # More weight to processed for high noise
+        elif noise_level > 10:
+            blend_factor = 0.7  # Balanced for medium noise
+        else:
+            blend_factor = 0.6  # More weight to original for low noise
             
-        logger.debug(f"Using detail enhancement strength: {detail_strength}")
-        result = adaptive_detail_enhancement(result, strength=detail_strength)
+        # Blend with original
+        result = cv2.addWeighted(result, blend_factor, original, 1.0 - blend_factor, 0)
         
-        # STEP 6: Apply final sharpening with edge-aware filter
-        logger.debug("Applying edge-aware sharpening")
-        # Create a sharpening kernel
-        kernel = np.array([[-1, -1, -1],
-                           [-1,  9, -1],
-                           [-1, -1, -1]]) / 5.0
-        
-        # Calculate edge mask using Canny
-        gray = cv2.cvtColor(result, cv2.COLOR_RGB2GRAY) if len(result.shape) == 3 else result
-        edges = cv2.Canny(gray, 100, 200)
-        
-        # Dilate edges
-        kernel_dilate = np.ones((3, 3), np.uint8)
-        edges = cv2.dilate(edges, kernel_dilate, iterations=1)
-        
-        # Create normalized edge mask (0-1)
-        edge_mask = edges.astype(float) / 255.0
-        
-        # Apply sharpen filter
-        if len(result.shape) == 3:  # Color
-            sharpened = np.zeros_like(result)
-            for i in range(3):
-                sharpened[:,:,i] = cv2.filter2D(result[:,:,i], -1, kernel)
-        else:  # Grayscale
-            sharpened = cv2.filter2D(result, -1, kernel)
-        
-        # Only apply sharpening to edge areas
-        if len(result.shape) == 3:
-            edge_mask_3c = np.repeat(edge_mask[:, :, np.newaxis], 3, axis=2)
-            result = (edge_mask_3c * sharpened) + ((1 - edge_mask_3c) * result)
-        else:
-            result = (edge_mask * sharpened) + ((1 - edge_mask) * result)
-        
-        # Ensure output is within valid range
+        # Ensure result is valid
         result = np.clip(result, 0, 255).astype(np.uint8)
-        
-        # STEP 7: Final noise suppression to remove any introduced noise
-        logger.debug("Applying final noise removal")
-        result = min_max_filter(result, kernel_size=3)
-        
-        # STEP 8: Preserve original colors and contrast
-        logger.debug("Preserving original colors and contrast")
-        
-        # Create a blending mask to protect detailed areas
-        gray = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY) if len(original.shape) == 3 else original
-        edges = cv2.Canny(gray, 100, 200)
-        
-        # Dilate edges
-        kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.dilate(edges, kernel, iterations=1)
-        
-        # Create mask where edges = 0 (black) and non-edges = 1 (white)
-        mask = edges / 255.0  # Invert the mask from previous implementation
-        
-        # Extend mask to 3 channels if needed
-        if len(original.shape) == 3:
-            mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
-            
-        # Use more balanced blending to preserve natural look
-        blend_weight = min(0.7, max(0.4, 1.0 - noise_level / 100.0))  # More balanced weights
-        result = blend_weight * result + (1 - blend_weight) * original
-        result = result.astype(np.uint8)
         
         return result
         
