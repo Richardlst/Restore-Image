@@ -1,0 +1,33 @@
+import numpy as np
+import cv2
+from PIL import Image
+import logging
+import traceback
+from models.resolution import enhance_resolution
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('enhance')
+
+def super_resolution(image):
+    try:
+        logger.debug(f"Input image shape: {image.shape if isinstance(image, np.ndarray) else 'PIL Image'}")
+        
+        # Convert to PIL Image if needed
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+            
+        # Apply super resolution using our model
+        result = enhance_resolution(image)
+            
+        # Convert back to numpy if input was numpy
+        if isinstance(image, np.ndarray):
+            result = np.array(result)
+        
+        logger.debug(f"Output image shape: {result.shape if isinstance(result, np.ndarray) else 'PIL Image'}")
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error in super_resolution: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise

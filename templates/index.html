@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Restoration Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .canvas-wrapper {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: #f9f9f9;
+        }
+        .control-panel {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        .brush-size-btn, .method-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #e9e9e9;
+            transition: all 0.2s;
+        }
+        .brush-size-btn:hover, .method-btn:hover {
+            background-color: #d0d0d0;
+        }
+        .brush-size-btn.active, .method-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .action-buttons {
+            margin-top: 20px;
+        }
+        .action-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        #clearCanvas {
+            background-color: #ef4444;
+            color: white;
+        }
+        #clearCanvas:hover {
+            background-color: #dc2626;
+        }
+        #processInpaint {
+            background-color: #3b82f6;
+            color: white;
+        }
+        #processInpaint:hover {
+            background-color: #2563eb;
+        }
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .canvas-container {
+            position: relative;
+            margin: 10px;
+            width: 100%;
+            max-width: 800px;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            max-width: 100%;
+            height: auto;
+        }
+        .preview-image {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+            margin: 10px 0;
+        }
+        #errorMessage {
+            display: none;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0.5rem;
+            background-color: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Image Restoration Tool</h1>
+        
+        <!-- Error Message -->
+        <div id="errorMessage" class="text-center"></div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Inpainting Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4">Image Inpainting</h2>
+                <div class="mb-4">
+                    <input type="file" id="inpaintImage" accept="image/*" class="mb-2 block w-full">
+                    <div class="canvas-container">
+                        <canvas id="inpaintCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h2 class="text-lg font-semibold mb-2">Controls</h2>
+                    <div class="control-panel">
+                        <div class="control-group">
+                            <label>Brush Size:</label>
+                            <div class="button-group">
+                                <button id="smallBrush" class="brush-size-btn">Small</button>
+                                <button id="mediumBrush" class="brush-size-btn active">Medium</button>
+                                <button id="largeBrush" class="brush-size-btn">Large</button>
+                            </div>
+                        </div>
+                        
+                        <div class="control-group">
+                            <label>Inpainting Method:</label>
+                            <div class="button-group">
+                                <button id="useOpenCV" class="method-btn active">OpenCV</button>
+                                <button id="useDeepFill" class="method-btn">DeepFill</button>
+                            </div>
+                        </div>
+                        
+                        <div class="button-group action-buttons">
+                            <button id="clearInpaint" class="bg-red-500 hover:bg-red-600 text-white py-1 px-4 rounded mr-2">Clear</button>
+                            <button id="processInpaint" class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-4 rounded">Process</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Result Container -->
+                <div id="resultContainer" class="mt-6" style="display:none;">
+                    <h3 class="text-lg font-semibold mb-2">Result</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="resultCanvas"></canvas>
+                    </div>
+                    <div class="mt-4">
+                        <button id="downloadResult" class="bg-green-500 hover:bg-green-600 text-white py-1 px-4 rounded">Download Result</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Super Resolution Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4">Super Resolution</h2>
+                <div class="mb-4">
+                    <input type="file" id="srImage" accept="image/*" class="mb-2 block w-full">
+                    <div class="canvas-container">
+                        <canvas id="srCanvas"></canvas>
+                    </div>
+                </div>
+                <button id="processSR" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Enhance</button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="mt-8 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4">Results</h2>
+            <div id="results" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h3 class="text-lg font-semibold mb-2">Original Image</h3>
+                    <img id="originalImage" class="max-w-full h-auto hidden border rounded-lg" alt="Original">
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-2">Enhanced Image</h3>
+                    <img id="resultImage" class="max-w-full h-auto hidden border rounded-lg" alt="Result">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let drawingCanvas, originalCanvas, resultCanvas;
+        let drawingCtx, originalCtx, resultCtx;
+        let isDrawing = false;
+        let brushSize = 15; // Default medium brush size
+        let useDeepFillMethod = false; // Default to OpenCV
+
+        window.onload = function() {
+            // Get canvas elements
+            drawingCanvas = document.getElementById('inpaintCanvas');
+            originalCanvas = document.createElement('canvas'); // Hidden canvas to store original image
+            resultCanvas = document.getElementById('resultCanvas');
+            
+            // Get canvas contexts
+            drawingCtx = drawingCanvas.getContext('2d');
+            originalCtx = originalCanvas.getContext('2d');
+            resultCtx = resultCanvas.getContext('2d');
+            
+            // Setup brush size buttons
+            document.getElementById('smallBrush').addEventListener('click', () => {
+                brushSize = 5;
+                setActiveBrushButton('smallBrush');
+            });
+            
+            document.getElementById('mediumBrush').addEventListener('click', () => {
+                brushSize = 15;
+                setActiveBrushButton('mediumBrush');
+            });
+            
+            document.getElementById('largeBrush').addEventListener('click', () => {
+                brushSize = 30;
+                setActiveBrushButton('largeBrush');
+            });
+            
+            // Setup inpainting method buttons
+            document.getElementById('useOpenCV').addEventListener('click', () => {
+                useDeepFillMethod = false;
+                setActiveMethodButton('useOpenCV');
+            });
+            
+            document.getElementById('useDeepFill').addEventListener('click', () => {
+                useDeepFillMethod = true;
+                setActiveMethodButton('useDeepFill');
+            });
+            
+            // Clear canvas button
+            document.getElementById('clearInpaint').addEventListener('click', () => {
+                clearCanvas(drawingCanvas, drawingCtx);
+            });
+            
+            // Process inpainting button
+            document.getElementById('processInpaint').addEventListener('click', processInpainting);
+            
+            // File input change handler
+            document.getElementById('inpaintImage').addEventListener('change', handleImageUpload);
+            
+            // Download result button
+            document.getElementById('downloadResult').addEventListener('click', downloadResult);
+            
+            // Setup drawing event listeners
+            setupDrawingEvents();
+            
+            // Setup SR functionality
+            document.getElementById('srImage').addEventListener('change', handleSRImageUpload);
+            document.getElementById('processSR').addEventListener('click', processEnhance);
+        };
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    // Set canvas dimensions
+                    const maxWidth = 800;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+                    
+                    // Setup canvases
+                    drawingCanvas.width = width;
+                    drawingCanvas.height = height;
+                    originalCanvas.width = width;
+                    originalCanvas.height = height;
+                    
+                    // Draw original image on both canvases
+                    drawingCtx.clearRect(0, 0, width, height);
+                    drawingCtx.drawImage(img, 0, 0, width, height);
+                    originalCtx.drawImage(img, 0, 0, width, height);
+                    
+                    // Hide result container when uploading new image
+                    document.getElementById('resultContainer').style.display = 'none';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function setupDrawingEvents() {
+            // Mouse events
+            drawingCanvas.addEventListener('mousedown', startDrawing);
+            drawingCanvas.addEventListener('mousemove', draw);
+            drawingCanvas.addEventListener('mouseup', stopDrawing);
+            drawingCanvas.addEventListener('mouseout', stopDrawing);
+            
+            // Touch events for mobile
+            drawingCanvas.addEventListener('touchstart', handleTouchStart);
+            drawingCanvas.addEventListener('touchmove', handleTouchMove);
+            drawingCanvas.addEventListener('touchend', handleTouchEnd);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            // Get canvas coordinates
+            const rect = drawingCanvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            
+            // Draw with semi-transparent red to mark areas for inpainting
+            drawingCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            drawingCtx.beginPath();
+            drawingCtx.arc(x, y, brushSize, 0, Math.PI * 2);
+            drawingCtx.fill();
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            startDrawing(e.touches[0]);
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            draw(e.touches[0]);
+        }
+
+        function handleTouchEnd() {
+            stopDrawing();
+        }
+
+        function clearCanvas(canvas, ctx) {
+            // Restore original image
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(originalCanvas, 0, 0);
+        }
+
+        async function processInpainting() {
+            // Show loading indicator
+            const button = document.getElementById('processInpaint');
+            button.textContent = 'Processing...';
+            button.disabled = true;
+            
+            try {
+                // Get the original image data
+                const originalImageBlob = await new Promise(resolve => 
+                    originalCanvas.toBlob(resolve, 'image/png')
+                );
+                
+                // Create a mask canvas
+                const maskCanvas = document.createElement('canvas');
+                maskCanvas.width = drawingCanvas.width;
+                maskCanvas.height = drawingCanvas.height;
+                const maskCtx = maskCanvas.getContext('2d');
+                
+                // First draw the original image to the mask canvas
+                maskCtx.drawImage(originalCanvas, 0, 0);
+                const originalImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+                
+                // Get the current drawn data
+                const drawnImageData = drawingCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+                
+                // Create a new ImageData for the mask
+                const maskImageData = maskCtx.createImageData(maskCanvas.width, maskCanvas.height);
+                
+                // Compare pixel by pixel to create a binary mask (white where drawn, black elsewhere)
+                for (let i = 0; i < drawnImageData.data.length; i += 4) {
+                    // If red component is much higher than in original, it was drawn on
+                    if (drawnImageData.data[i] - originalImageData.data[i] > 50) {
+                        // Set to white (255) for drawn areas
+                        maskImageData.data[i] = maskImageData.data[i+1] = maskImageData.data[i+2] = 255;
+                    } else {
+                        // Set to black (0) for untouched areas
+                        maskImageData.data[i] = maskImageData.data[i+1] = maskImageData.data[i+2] = 0;
+                    }
+                    // Full opacity
+                    maskImageData.data[i+3] = 255;
+                }
+                
+                // Put the mask data to the mask canvas
+                maskCtx.putImageData(maskImageData, 0, 0);
+                
+                // Get mask as data URL
+                const maskDataURL = maskCanvas.toDataURL('image/png');
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', originalImageBlob);
+                formData.append('mask', maskDataURL);
+                formData.append('useDeepFill', useDeepFillMethod);
+                
+                console.log('Sending request with useDeepFill =', useDeepFillMethod);
+                
+                // Send to server
+                const response = await fetch('/inpaint', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error: ${response.status}\n${errorText}`);
+                }
+                
+                // Get result as blob
+                const resultBlob = await response.blob();
+                
+                // Load result into image
+                const img = new Image();
+                img.onload = function() {
+                    // Set result canvas dimensions
+                    resultCanvas.width = img.width;
+                    resultCanvas.height = img.height;
+                    
+                    // Draw result on result canvas
+                    resultCtx.clearRect(0, 0, img.width, img.height);
+                    resultCtx.drawImage(img, 0, 0);
+                    
+                    // Show result container
+                    document.getElementById('resultContainer').style.display = 'block';
+                    
+                    // Scroll to result
+                    document.getElementById('resultContainer').scrollIntoView({ behavior: 'smooth' });
+                };
+                img.src = URL.createObjectURL(resultBlob);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert(`Error during inpainting: ${error.message}`);
+            } finally {
+                // Reset button
+                button.textContent = 'Process';
+                button.disabled = false;
+            }
+        }
+
+        function downloadResult() {
+            if (!resultCanvas) return;
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.download = 'inpainted_image.png';
+            link.href = resultCanvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function setActiveBrushButton(button) {
+            // Reset all buttons
+            document.getElementById('smallBrush').className = 'brush-size-btn';
+            document.getElementById('mediumBrush').className = 'brush-size-btn';
+            document.getElementById('largeBrush').className = 'brush-size-btn';
+            
+            // Set active button
+            document.getElementById(button).className = 'brush-size-btn active';
+        }
+
+        function setActiveMethodButton(button) {
+            // Reset all buttons
+            document.getElementById('useOpenCV').className = 'method-btn';
+            document.getElementById('useDeepFill').className = 'method-btn';
+            
+            // Set active button
+            document.getElementById(button).className = 'method-btn active';
+        }
+
+        // Super Resolution functions
+        function handleSRImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.getElementById('srCanvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Set canvas dimensions
+                    const maxWidth = 800;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // Draw image on canvas
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        async function processEnhance() {
+            try {
+                // Show loading state
+                const button = document.getElementById('processSR');
+                const originalText = button.textContent;
+                button.textContent = 'Processing...';
+                button.disabled = true;
+                
+                // Hide previous results if any
+                document.getElementById('originalImage').classList.add('hidden');
+                document.getElementById('resultImage').classList.add('hidden');
+                
+                // Show loading message
+                const errorDiv = document.getElementById('errorMessage');
+                errorDiv.textContent = 'Enhancing image... This may take a minute for the first run.';
+                errorDiv.className = 'text-center text-blue-600 mb-4';
+                
+                // Get canvas and convert to blob
+                const canvas = document.getElementById('srCanvas');
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('image', blob);
+                
+                // Send to server
+                const response = await fetch('/super_resolution', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(`Server error: ${error}`);
+                }
+                
+                // Get result
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Clear error message
+                errorDiv.textContent = '';
+                
+                // Display original image
+                const originalImage = document.getElementById('originalImage');
+                originalImage.src = canvas.toDataURL('image/png');
+                originalImage.classList.remove('hidden');
+                
+                // Display enhanced image
+                const resultImage = document.getElementById('resultImage');
+                resultImage.src = `data:image/png;base64,${data.result}`;
+                resultImage.classList.remove('hidden');
+                
+                // Show results section
+                document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+                
+            } catch (error) {
+                console.error('Error:', error);
+                const errorDiv = document.getElementById('errorMessage');
+                errorDiv.textContent = `Error during enhancement: ${error.message}`;
+                errorDiv.className = 'text-center text-red-600 mb-4';
+            } finally {
+                // Reset button
+                const button = document.getElementById('processSR');
+                button.textContent = 'Enhance';
+                button.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
