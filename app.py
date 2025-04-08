@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('app')
 
 # Import the functions from separate modules
-from restore import inpaint_image, DEEPFILL_AVAILABLE
 from enhance import super_resolution
+from colorize import colorize_image
 
 app = Flask(__name__)
 
@@ -78,11 +78,7 @@ def inpaint():
             logger.error("No mask data provided in request")
             return jsonify({'error': 'No mask data provided'}), 400
         
-        # Check if DeepFill should be used
-        use_deepfill_param = request.form.get('useDeepFill', 'false')
-        use_deepfill = use_deepfill_param.lower() == 'true'
-        
-        logger.debug(f"Using DeepFill: {use_deepfill}")
+        logger.debug("Using OpenCV inpainting")
         
         # Convert base64 mask to numpy array
         if mask_data and ',' in mask_data:
@@ -124,24 +120,9 @@ def inpaint():
         # Debug: log image and mask dimensions
         logger.debug(f"Image shape: {image_rgb.shape}, Mask shape: {mask.shape}")
         
-        # Process the image using the inpainting function
-        if use_deepfill and DEEPFILL_AVAILABLE:
-            logger.info("Using DeepFill for inpainting")
-            try:
-                result = inpaint_image(image_rgb, mask)
-                logger.debug("DeepFill inpainting completed successfully")
-            except Exception as e:
-                logger.error(f"DeepFill inpainting failed: {str(e)}")
-                logger.error(traceback.format_exc())
-                # Fallback to OpenCV
-                logger.info("Falling back to OpenCV inpainting")
-                result = inpaint_image(image_rgb, mask)
-        else:
-            if use_deepfill and not DEEPFILL_AVAILABLE:
-                logger.warning("DeepFill requested but not available, using OpenCV instead")
-            else:
-                logger.info("Using OpenCV for inpainting")
-            result = inpaint_image(image_rgb, mask)
+        # Process the image using OpenCV inpainting
+        logger.info("Using OpenCV for inpainting")
+        result = cv2.inpaint(image_rgb, mask, 3, cv2.INPAINT_TELEA)
         
         # Convert the result to PIL Image for saving
         result_pil = Image.fromarray(result)
@@ -203,6 +184,44 @@ def enhance():
     
     except Exception as e:
         logger.error(f"Error in enhance route: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/colorize', methods=['POST'])
+def colorize():
+    try:
+        logger.debug("Colorization request received")
+        if 'image' not in request.files:
+            logger.error("No image in request")
+            return jsonify({'error': 'No image provided'}), 400
+        
+        logger.debug("Loading image")
+        # Load image from request
+        file = request.files['image']
+        image_bytes = file.read()
+        image_np = np.frombuffer(image_bytes, dtype=np.uint8)
+        image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            logger.error("Failed to decode image data")
+            return jsonify({'error': 'Failed to decode image data'}), 400
+        
+        logger.debug("Performing colorization")
+        try:
+            # Perform colorization with fixed render factor
+            result = colorize_image(image, render_factor=35)
+        except Exception as e:
+            logger.error(f"Colorization failed: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        
+        # Create an image buffer for the response
+        _, buffer = cv2.imencode('.png', result)
+        result_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({'result': result_base64})
+    
+    except Exception as e:
+        logger.error(f"Error in colorize route: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 

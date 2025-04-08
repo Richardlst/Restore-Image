@@ -152,13 +152,26 @@
     </style>
 </head>
 <body class="bg-gray-100">
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+            <div class="spinner" style="width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; margin: 0 auto; animation: spin 2s linear infinite;"></div>
+        </div>
+    </div>
+    
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Image Restoration Tool</h1>
         
         <!-- Error Message -->
         <div id="errorMessage" class="text-center"></div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <!-- Inpainting Section -->
             <div class="bg-white p-6 rounded-lg shadow-lg">
                 <h2 class="text-2xl font-semibold mb-4">Image Inpainting</h2>
@@ -169,29 +182,8 @@
                     </div>
                 </div>
                 <div class="mt-4">
-                    <h2 class="text-lg font-semibold mb-2">Controls</h2>
-                    <div class="control-panel">
-                        <div class="control-group">
-                            <label>Brush Size:</label>
-                            <div class="button-group">
-                                <button id="smallBrush" class="brush-size-btn">Small</button>
-                                <button id="mediumBrush" class="brush-size-btn active">Medium</button>
-                                <button id="largeBrush" class="brush-size-btn">Large</button>
-                            </div>
-                        </div>
-                        
-                        <div class="control-group">
-                            <label>Inpainting Method:</label>
-                            <div class="button-group">
-                                <button id="useOpenCV" class="method-btn active">OpenCV</button>
-                                <button id="useDeepFill" class="method-btn">DeepFill</button>
-                            </div>
-                        </div>
-                        
-                        <div class="button-group action-buttons">
-                            <button id="clearInpaint" class="bg-red-500 hover:bg-red-600 text-white py-1 px-4 rounded mr-2">Clear</button>
-                            <button id="processInpaint" class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-4 rounded">Process</button>
-                        </div>
+                    <div class="button-group action-buttons">
+                        <button id="processInpaint" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">Process</button>
                     </div>
                 </div>
                 
@@ -216,7 +208,21 @@
                         <canvas id="srCanvas"></canvas>
                     </div>
                 </div>
-                <button id="processSR" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Enhance</button>
+                <button id="processSR" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">Enhance</button>
+            </div>
+
+            <!-- Colorization Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4">Image Colorization</h2>
+                <div class="mb-4">
+                    <input type="file" id="colorizeImage" accept="image/*" class="mb-2 block w-full">
+                    <div class="canvas-container">
+                        <canvas id="colorizeCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <button id="processColorize" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">Colorize</button>
+                </div>
             </div>
         </div>
 
@@ -237,8 +243,8 @@
     </div>
 
     <script>
-        let drawingCanvas, originalCanvas, resultCanvas;
-        let drawingCtx, originalCtx, resultCtx;
+        let drawingCanvas, originalCanvas, resultCanvas, colorizeCanvas;
+        let drawingCtx, originalCtx, resultCtx, colorizeCtx;
         let isDrawing = false;
         let brushSize = 15; // Default medium brush size
         let useDeepFillMethod = false; // Default to OpenCV
@@ -248,43 +254,16 @@
             drawingCanvas = document.getElementById('inpaintCanvas');
             originalCanvas = document.createElement('canvas'); // Hidden canvas to store original image
             resultCanvas = document.getElementById('resultCanvas');
+            colorizeCanvas = document.getElementById('colorizeCanvas');
             
             // Get canvas contexts
             drawingCtx = drawingCanvas.getContext('2d');
             originalCtx = originalCanvas.getContext('2d');
             resultCtx = resultCanvas.getContext('2d');
+            colorizeCtx = colorizeCanvas.getContext('2d');
             
-            // Setup brush size buttons
-            document.getElementById('smallBrush').addEventListener('click', () => {
-                brushSize = 5;
-                setActiveBrushButton('smallBrush');
-            });
-            
-            document.getElementById('mediumBrush').addEventListener('click', () => {
-                brushSize = 15;
-                setActiveBrushButton('mediumBrush');
-            });
-            
-            document.getElementById('largeBrush').addEventListener('click', () => {
-                brushSize = 30;
-                setActiveBrushButton('largeBrush');
-            });
-            
-            // Setup inpainting method buttons
-            document.getElementById('useOpenCV').addEventListener('click', () => {
-                useDeepFillMethod = false;
-                setActiveMethodButton('useOpenCV');
-            });
-            
-            document.getElementById('useDeepFill').addEventListener('click', () => {
-                useDeepFillMethod = true;
-                setActiveMethodButton('useDeepFill');
-            });
-            
-            // Clear canvas button
-            document.getElementById('clearInpaint').addEventListener('click', () => {
-                clearCanvas(drawingCanvas, drawingCtx);
-            });
+            // Set default brush size
+            brushSize = 15;
             
             // Process inpainting button
             document.getElementById('processInpaint').addEventListener('click', processInpainting);
@@ -301,6 +280,10 @@
             // Setup SR functionality
             document.getElementById('srImage').addEventListener('change', handleSRImageUpload);
             document.getElementById('processSR').addEventListener('click', processEnhance);
+            
+            // Setup colorization functionality
+            document.getElementById('colorizeImage').addEventListener('change', handleColorizeImageUpload);
+            document.getElementById('processColorize').addEventListener('click', processColorize);
         };
 
         function handleImageUpload(e) {
@@ -506,25 +489,81 @@
             link.click();
         }
 
-        function setActiveBrushButton(button) {
-            // Reset all buttons
-            document.getElementById('smallBrush').className = 'brush-size-btn';
-            document.getElementById('mediumBrush').className = 'brush-size-btn';
-            document.getElementById('largeBrush').className = 'brush-size-btn';
-            
-            // Set active button
-            document.getElementById(button).className = 'brush-size-btn active';
-        }
 
-        function setActiveMethodButton(button) {
-            // Reset all buttons
-            document.getElementById('useOpenCV').className = 'method-btn';
-            document.getElementById('useDeepFill').className = 'method-btn';
-            
-            // Set active button
-            document.getElementById(button).className = 'method-btn active';
-        }
 
+        // Colorization functions
+        function handleColorizeImageUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        // Set canvas dimensions to match the image
+                        colorizeCanvas.width = img.width;
+                        colorizeCanvas.height = img.height;
+                        
+                        // Draw the image on the canvas
+                        colorizeCtx.drawImage(img, 0, 0, img.width, img.height);
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function processColorize() {
+            if (!colorizeCanvas.width || !colorizeCanvas.height) {
+                showError('Please upload an image first');
+                return;
+            }
+            
+            // Show loading indicator
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.style.display = 'flex';
+            
+            // Convert canvas to blob
+            colorizeCanvas.toBlob(function(blob) {
+                const formData = new FormData();
+                formData.append('image', blob, 'image.jpg');
+                
+                fetch('/colorize', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to colorize image');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    // Display the original image
+                    const originalImage = document.getElementById('originalImage');
+                    originalImage.src = colorizeCanvas.toDataURL('image/png');
+                    originalImage.classList.remove('hidden');
+                    
+                    // Display the result image
+                    const resultImage = document.getElementById('resultImage');
+                    resultImage.src = 'data:image/png;base64,' + data.result;
+                    resultImage.classList.remove('hidden');
+                    
+                    // Scroll to results section
+                    document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+                })
+                .catch(error => {
+                    showError(error.message);
+                })
+                .finally(() => {
+                    if (loadingOverlay) loadingOverlay.style.display = 'none';
+                });
+            }, 'image/jpeg');
+        }
+        
         // Super Resolution functions
         function handleSRImageUpload(e) {
             const file = e.target.files[0];
@@ -630,6 +669,29 @@
                 button.disabled = false;
             }
         }
+    // Utility functions
+    function showError(message) {
+        const errorElement = document.getElementById('errorMessage');
+        if (errorElement) {
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);  // Hide after 5 seconds
+        } else {
+            alert(message);  // Fallback to alert if error element not found
+        }
+    }
+    
+    function showLoading() {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    }
+    
+    function hideLoading() {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+    }
     </script>
 </body>
 </html>

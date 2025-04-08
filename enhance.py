@@ -4,6 +4,7 @@ from PIL import Image
 import logging
 import traceback
 from models.resolution import enhance_resolution
+from models.image_enhancement import apply_enhancement_pipeline
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -13,12 +14,18 @@ def super_resolution(image):
     try:
         logger.debug(f"Input image shape: {image.shape if isinstance(image, np.ndarray) else 'PIL Image'}")
         
-        # Convert to PIL Image if needed
-        if isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
+        # Convert to numpy array if needed
+        if isinstance(image, Image.Image):
+            image = np.array(image)
+            
+        # First apply detail enhancement
+        enhanced = apply_enhancement_pipeline(image)
+        
+        # Convert to PIL Image for super resolution
+        enhanced_pil = Image.fromarray(enhanced)
             
         # Apply super resolution using our model
-        result = enhance_resolution(image)
+        result = enhance_resolution(enhanced_pil)
             
         # Convert back to numpy if input was numpy
         if isinstance(image, np.ndarray):
