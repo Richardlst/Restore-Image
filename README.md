@@ -6,7 +6,7 @@ This web application provides two main features:
 
 ## Project Structure
 
-- `app.py` - Main application and route handlers
+- `gradio_app.py` - Main application and route handlers
 - `restore.py` - Contains the image inpainting functionality 
 - `enhance.py` - Contains the super resolution functionality
 - `models/` - Contains AI model related code
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 2. Run the application:
 ```bash
-python app.py
+python gradio_app.py
 ```
 Or use the provided batch file:
 ```bash
