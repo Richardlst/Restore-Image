@@ -41,10 +41,14 @@ run.bat
 1. Upload an image using the file input in the Super Resolution section
 2. Click "Enhance" to improve the image quality
 
+### Colorization
+1. Upload an image using the file input in the Image Colorization section
+2. Click "colorize" to colorize the image
 ## Note
 The current implementation uses basic image processing techniques. For better results, you can integrate more advanced AI models like:
-- For inpainting: LaMa, DeepFillv2
-- For super resolution: ESRGAN, Real-ESRGAN
+- For inpainting: DDPM
+- For super resolution: ESRGAN
+- For colorization: ChromaGAN
 
 ## Development
-The application has been structured to separate the two main functionalities (image restoration and enhancement) into different modules to make maintenance and extension easier.
+The application has been structured to separate the 3 main functionalities (image restoration and enhancement) into different modules to make maintenance and extension easier.
