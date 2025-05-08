@@ -181,9 +181,62 @@
                         <canvas id="inpaintCanvas"></canvas>
                     </div>
                 </div>
+                
+                <!-- Advanced Inpainting Controls -->
+                <div class="mt-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="useAdvancedInpainting" class="mr-2">
+                        <label for="useAdvancedInpainting" class="font-medium">Use AI-based advanced inpainting</label>
+                    </div>
+                    
+                    <div id="advancedControls" class="hidden">
+                        <div class="mb-3">
+                            <label for="promptInput" class="block text-sm font-medium mb-1">Prompt (guide the AI)</label>
+                            <input type="text" id="promptInput" class="w-full border rounded p-2 text-sm" 
+                                   placeholder="Describe what should be in the masked area (e.g. 'a clear blue sky')">
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="guidanceScale" class="block text-sm font-medium mb-1">Guidance Scale (7.5)</label>
+                                <input type="range" id="guidanceScale" min="1" max="15" step="0.1" value="7.5" class="w-full">
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>1</span>
+                                    <span>15</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label for="samplingStep" class="block text-sm font-medium mb-1">Sampling Steps (30)</label>
+                                <input type="range" id="samplingStep" min="10" max="50" step="1" value="30" class="w-full">
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>10</span>
+                                    <span>50</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label for="strength" class="block text-sm font-medium mb-1">Strength (0.8)</label>
+                                <input type="range" id="strength" min="0.1" max="1" step="0.05" value="0.8" class="w-full">
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>0.1</span>
+                                    <span>1</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 text-sm text-gray-600">
+                            <p class="mb-1">💡 <strong>Note:</strong> Advanced inpainting mode uses AI to create more realistic results but takes longer to process.</p>
+                            <button id="preloadModels" class="text-blue-600 hover:underline">Preload AI models</button>
+                            <span id="modelStatus" class="ml-2 text-xs italic"></span>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="mt-4">
                     <div class="button-group action-buttons">
                         <button id="processInpaint" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">Process</button>
+                        <button id="clearMask" class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded ml-2">Clear Mask</button>
                     </div>
                 </div>
                 
@@ -247,7 +300,17 @@
         let drawingCtx, originalCtx, resultCtx, colorizeCtx;
         let isDrawing = false;
         let brushSize = 15; // Default medium brush size
-        let useDeepFillMethod = false; // Default to OpenCV
+        // Initialize advanced inpainting toggle behavior
+        const advancedInpaintingToggle = document.getElementById('useAdvancedInpainting');
+        const advancedControls = document.getElementById('advancedControls');
+        
+        advancedInpaintingToggle.addEventListener('change', function() {
+            if (this.checked) {
+                advancedControls.classList.remove('hidden');
+            } else {
+                advancedControls.classList.add('hidden');
+            }
+        });
 
         window.onload = function() {
             // Get canvas elements
@@ -284,6 +347,35 @@
             // Setup colorization functionality
             document.getElementById('colorizeImage').addEventListener('change', handleColorizeImageUpload);
             document.getElementById('processColorize').addEventListener('click', processColorize);
+            document.getElementById('preloadModels').addEventListener('click', preloadModels);
+            document.getElementById('clearMask').addEventListener('click', function() {
+                if (originalCanvas) {
+                    clearCanvas(drawingCanvas, drawingCtx);
+                    if (uploadedImage) {
+                        drawingCtx.drawImage(uploadedImage, 0, 0, drawingCanvas.width, drawingCanvas.height);
+                    }
+                }
+            });
+            
+            // Set drawing properties
+            drawingCtx.lineWidth = 15;
+            drawingCtx.lineCap = 'round';
+            drawingCtx.lineJoin = 'round';
+            drawingCtx.strokeStyle = '#FF0000';
+            
+            // Set up drawing events
+            setupDrawingEvents();
+            
+            // Set up range input labels
+            document.getElementById('guidanceScale').addEventListener('input', function() {
+                document.querySelector('label[for="guidanceScale"]').textContent = `Guidance Scale (${this.value})`;
+            });
+            document.getElementById('samplingStep').addEventListener('input', function() {
+                document.querySelector('label[for="samplingStep"]').textContent = `Sampling Steps (${this.value})`;
+            });
+            document.getElementById('strength').addEventListener('input', function() {
+                document.querySelector('label[for="strength"]').textContent = `Strength (${this.value})`;
+            });
         };
 
         function handleImageUpload(e) {
@@ -432,9 +524,26 @@
                 const formData = new FormData();
                 formData.append('file', originalImageBlob);
                 formData.append('mask', maskDataURL);
-                formData.append('useDeepFill', useDeepFillMethod);
                 
-                console.log('Sending request with useDeepFill =', useDeepFillMethod);
+                // Add advanced inpainting parameters if enabled
+                const useAdvanced = document.getElementById('useAdvancedInpainting').checked;
+                formData.append('advanced', useAdvanced);
+                
+                if (useAdvanced) {
+                    const prompt = document.getElementById('promptInput').value;
+                    const guidanceScale = document.getElementById('guidanceScale').value;
+                    const samplingStep = document.getElementById('samplingStep').value;
+                    const strength = document.getElementById('strength').value;
+                    
+                    formData.append('prompt', prompt);
+                    formData.append('guidance_scale', guidanceScale);
+                    formData.append('sampling_step', samplingStep);
+                    formData.append('strength', strength);
+                    
+                    console.log('Sending request with advanced inpainting parameters:', {
+                        prompt, guidanceScale, samplingStep, strength
+                    });
+                }
                 
                 // Send to server
                 const response = await fetch('/inpaint', {
@@ -466,7 +575,13 @@
                     
                     // Scroll to result
                     document.getElementById('resultContainer').scrollIntoView({ behavior: 'smooth' });
+                    
+                    // Hide loading indicator
+                    hideLoading();
                 };
+                
+                // Show loading indicator while image is loading
+                showLoading();
                 img.src = URL.createObjectURL(resultBlob);
                 
             } catch (error) {
